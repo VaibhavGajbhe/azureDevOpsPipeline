@@ -1,0 +1,67 @@
+pool: swimming-pool
+
+trigger: none
+
+stages:
+  - stage: TerraformInitAndPlan
+    jobs:
+      - job: TerraformTFSEC
+        displayName: tfsec tool
+        steps:
+          - task: tfsec@1
+            inputs:
+              version: 'v1.26.0'
+              dir: '$(System.DefaultWorkingDirectory)/environment/dev/'
+
+      - job: TerraformInit
+        displayName: Terraform Init and Plan
+        steps:
+          - task: TerraformTaskV4@4
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev/'
+              backendServiceArm: 'myserviceconnection'
+              backendAzureRmResourceGroupName: 'vg-rg'
+              backendAzureRmStorageAccountName: 'pipestgacc001'
+              backendAzureRmContainerName: 'statfilecontainer'
+              backendAzureRmKey: 'dev.terraform.tfstate'
+          
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: '$(System.DefaultWorkingDirectory)/environment/dev/.terraform'
+              artifactName: 'terraform-init-artifact'
+            displayName: 'Publish Terraform Init Artifact'
+
+          - task: TerraformTaskV4@4
+            inputs:
+              provider: 'azurerm'
+              command: 'validate'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev/'
+
+          - task: TerraformTaskV4@4
+            inputs:
+              provider: 'azurerm'
+              command: 'plan'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev/'
+              environmentServiceNameAzureRM: 'myserviceconnection'
+
+  - stage: TerraformValidateAndApply
+    dependsOn: TerraformInitAndPlan
+    jobs:
+      - job: TerraformApply
+        displayName: Terraform Apply
+      
+        steps:
+          - task: DownloadPipelineArtifact@2
+            inputs:
+              artifactName: 'terraform-init-artifact'
+              targetPath: '$(System.DefaultWorkingDirectory)/environment/dev/.terraform'
+            displayName: 'Download Terraform Init Artifact'
+
+          - task: TerraformTaskV4@4
+            inputs:
+              provider: 'azurerm'
+              command: 'apply'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev/'
+              environmentServiceNameAzureRM: 'myserviceconnection'
